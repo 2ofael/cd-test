@@ -26,10 +26,72 @@ jobs:
       - name: Build React app
         run: npm run build
 
+      - name: Resolve deployment host
+        id: deploy_host
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          if [ -z "$EC2_HOST" ] || [ -z "$EC2_USER" ] || [ -z "$EC2_SSH_KEY" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Deployment skipped: required EC2 secrets are not configured." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          host="${EC2_HOST#http://}"
+          host="${host#https://}"
+          host="${host%%/*}"
+          if [[ "$host" == \[*\] ]]; then
+            host="${host#[}"
+            host="${host%]}"
+          elif [[ "$host" == *:* ]]; then
+            # Strip :port from hostname/IPv4, but keep raw IPv6 literals.
+            colon_chars="${host//[^:]}"
+            colon_count="${#colon_chars}"
+            if [ "$colon_count" -eq 1 ]; then
+              host="${host%%:*}"
+            elif ! [[ "$host" =~ ^[0-9A-Fa-f:]+(%[0-9A-Za-z._~-]+)?$ ]]; then
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              echo "Deployment skipped: EC2_HOST has an invalid colon-delimited format." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+
+          if [ -z "$host" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Deployment skipped: EC2_HOST could not be parsed after normalization." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          dns_resolved=false
+          dns_method=
+          if getent ahosts "$host" >/dev/null 2>&1; then
+            dns_resolved=true
+            dns_method=getent
+          elif nslookup "$host" >/dev/null 2>&1; then
+            dns_resolved=true
+            dns_method=nslookup
+          fi
+
+          if [ "$dns_resolved" != "true" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Deployment skipped: EC2_HOST is not DNS-resolvable from the runner." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$dns_method" = "nslookup" ]; then
+            echo "Deployment host DNS resolution used nslookup fallback." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+
       - name: Deploy to EC2
+        if: steps.deploy_host.outputs.ready == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ steps.deploy_host.outputs.host }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "build/*"
