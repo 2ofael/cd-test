@@ -1,4 +1,4 @@
-name: React Deploy
+name: React Deploy 2
 
 on:
   push:
