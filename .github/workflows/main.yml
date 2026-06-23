@@ -30,7 +30,15 @@ jobs:
         id: deploy_host
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
         run: |
+          if [ -z "$EC2_USER" ] || [ -z "$EC2_SSH_KEY" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Deployment skipped: required SSH secrets are not configured." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           host="${EC2_HOST#http://}"
           host="${host#https://}"
           host="${host%%/*}"
@@ -47,17 +55,7 @@ jobs:
             exit 0
           fi
 
-          if ! HOST_TO_RESOLVE="$host" python3 - <<'PY' >/dev/null 2>&1
-import os
-import socket
-import sys
-
-try:
-    socket.getaddrinfo(os.environ["HOST_TO_RESOLVE"], None)
-except OSError:
-    sys.exit(1)
-PY
-          then
+          if ! HOST_TO_RESOLVE="$host" python3 -c 'import os, socket; socket.getaddrinfo(os.environ["HOST_TO_RESOLVE"], None)' >/dev/null 2>&1; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
             echo "Deployment skipped: EC2_HOST is not DNS-resolvable from the runner." >> "$GITHUB_STEP_SUMMARY"
             exit 0
@@ -67,7 +65,7 @@ PY
           echo "host=$host" >> "$GITHUB_OUTPUT"
 
       - name: Deploy to EC2
-        if: steps.deploy_host.outputs.ready == 'true' && secrets.EC2_USER != '' && secrets.EC2_SSH_KEY != ''
+        if: steps.deploy_host.outputs.ready == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ steps.deploy_host.outputs.host }}
