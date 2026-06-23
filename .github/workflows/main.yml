@@ -46,7 +46,10 @@ jobs:
             host="${host#[}"
             host="${host%%]*}"
           elif [[ "$host" == *:* ]]; then
-            host="${host%%:*}"
+            colon_count=$(printf '%s' "$host" | awk -F: '{print NF-1}')
+            if [ "$colon_count" -eq 1 ]; then
+              host="${host%%:*}"
+            fi
           fi
 
           if [ -z "$host" ]; then
@@ -55,7 +58,7 @@ jobs:
             exit 0
           fi
 
-          if ! HOST_TO_RESOLVE="$host" python3 -c 'import os, socket; socket.getaddrinfo(os.environ["HOST_TO_RESOLVE"], None)' >/dev/null 2>&1; then
+          if ! getent ahosts "$host" >/dev/null 2>&1 && ! nslookup "$host" >/dev/null 2>&1; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
             echo "Deployment skipped: EC2_HOST is not DNS-resolvable from the runner." >> "$GITHUB_STEP_SUMMARY"
             exit 0
