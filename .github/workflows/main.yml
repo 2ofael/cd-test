@@ -47,8 +47,8 @@ jobs:
             host="${host%]}"
           elif [[ "$host" == *:* ]]; then
             # Strip :port from hostname/IPv4, but keep raw IPv6 literals.
-            colons="${host//[^:]}"
-            colon_count="${#colons}"
+            colon_chars="${host//[^:]}"
+            colon_count="${#colon_chars}"
             if [ "$colon_count" -eq 1 ]; then
               host="${host%%:*}"
             fi
@@ -61,10 +61,13 @@ jobs:
           fi
 
           dns_resolved=false
+          dns_method=
           if getent ahosts "$host" >/dev/null 2>&1; then
             dns_resolved=true
+            dns_method=getent
           elif nslookup "$host" >/dev/null 2>&1; then
             dns_resolved=true
+            dns_method=nslookup
           fi
 
           if [ "$dns_resolved" != "true" ]; then
@@ -73,7 +76,7 @@ jobs:
             exit 0
           fi
 
-          if ! getent ahosts "$host" >/dev/null 2>&1 && nslookup "$host" >/dev/null 2>&1; then
+          if [ "$dns_method" = "nslookup" ]; then
               echo "Deployment host DNS resolution used nslookup fallback." >> "$GITHUB_STEP_SUMMARY"
           fi
 
