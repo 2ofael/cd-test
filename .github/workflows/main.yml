@@ -26,10 +26,35 @@ jobs:
       - name: Build React app
         run: npm run build
 
+      - name: Resolve deployment host
+        id: deploy_host
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          host="${EC2_HOST#http://}"
+          host="${host#https://}"
+          host="${host%%/*}"
+
+          if [ -z "$host" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Deployment skipped: EC2_HOST is not configured." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if ! getent ahosts "$host" >/dev/null 2>&1; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Deployment skipped: EC2_HOST is not DNS-resolvable from the runner." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+
       - name: Deploy to EC2
+        if: steps.deploy_host.outputs.ready == 'true' && secrets.EC2_USER != '' && secrets.EC2_SSH_KEY != ''
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ steps.deploy_host.outputs.host }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "build/*"
