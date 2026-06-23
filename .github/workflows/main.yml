@@ -33,9 +33,9 @@ jobs:
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
         run: |
-          if [ -z "$EC2_USER" ] || [ -z "$EC2_SSH_KEY" ]; then
+          if [ -z "$EC2_HOST" ] || [ -z "$EC2_USER" ] || [ -z "$EC2_SSH_KEY" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Deployment skipped: required SSH secrets are not configured." >> "$GITHUB_STEP_SUMMARY"
+            echo "Deployment skipped: required EC2 secrets are not configured." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -46,6 +46,7 @@ jobs:
             host="${host#[}"
             host="${host%%]*}"
           elif [[ "$host" == *:* ]]; then
+            # Strip :port from hostname/IPv4, but keep raw IPv6 literals.
             colon_count=$(printf '%s' "$host" | awk -F: '{print NF-1}')
             if [ "$colon_count" -eq 1 ]; then
               host="${host%%:*}"
@@ -58,7 +59,11 @@ jobs:
             exit 0
           fi
 
-          if ! getent ahosts "$host" >/dev/null 2>&1 && ! nslookup "$host" >/dev/null 2>&1; then
+          if getent ahosts "$host" >/dev/null 2>&1; then
+            :
+          elif nslookup "$host" >/dev/null 2>&1; then
+            echo "Deployment host DNS resolution used nslookup fallback." >> "$GITHUB_STEP_SUMMARY"
+          else
             echo "ready=false" >> "$GITHUB_OUTPUT"
             echo "Deployment skipped: EC2_HOST is not DNS-resolvable from the runner." >> "$GITHUB_STEP_SUMMARY"
             exit 0
