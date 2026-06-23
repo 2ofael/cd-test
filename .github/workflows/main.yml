@@ -47,7 +47,8 @@ jobs:
             host="${host%%\]*}"
           elif [[ "$host" == *:* ]]; then
             # Strip :port from hostname/IPv4, but keep raw IPv6 literals.
-            colon_count=$(printf '%s' "$host" | awk -F: '{print NF-1}')
+            colon_count="${host//[^:]}"
+            colon_count="${#colon_count}"
             if [ "$colon_count" -eq 1 ]; then
               host="${host%%:*}"
             fi
@@ -55,18 +56,18 @@ jobs:
 
           if [ -z "$host" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Deployment skipped: EC2_HOST is not configured." >> "$GITHUB_STEP_SUMMARY"
+            echo "Deployment skipped: EC2_HOST could not be parsed after normalization." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          if getent ahosts "$host" >/dev/null 2>&1; then
-            true
-          elif nslookup "$host" >/dev/null 2>&1; then
-            echo "Deployment host DNS resolution used nslookup fallback." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Deployment skipped: EC2_HOST is not DNS-resolvable from the runner." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+          if ! getent ahosts "$host" >/dev/null 2>&1; then
+            if nslookup "$host" >/dev/null 2>&1; then
+              echo "Deployment host DNS resolution used nslookup fallback." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              echo "Deployment skipped: EC2_HOST is not DNS-resolvable from the runner." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
           fi
 
           echo "ready=true" >> "$GITHUB_OUTPUT"
