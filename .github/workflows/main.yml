@@ -51,6 +51,10 @@ jobs:
             colon_count="${#colon_chars}"
             if [ "$colon_count" -eq 1 ]; then
               host="${host%%:*}"
+            elif ! [[ "$host" =~ ^[0-9A-Fa-f:]+(%[0-9A-Za-z._~-]+)?$ ]]; then
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              echo "Deployment skipped: EC2_HOST has an invalid colon-delimited format." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
             fi
           fi
 
@@ -77,7 +81,7 @@ jobs:
           fi
 
           if [ "$dns_method" = "nslookup" ]; then
-              echo "Deployment host DNS resolution used nslookup fallback." >> "$GITHUB_STEP_SUMMARY"
+            echo "Deployment host DNS resolution used nslookup fallback." >> "$GITHUB_STEP_SUMMARY"
           fi
 
           echo "ready=true" >> "$GITHUB_OUTPUT"
